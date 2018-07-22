@@ -1,16 +1,14 @@
 package com.josiahebhomenye.kafka
 
-import java.util
 import java.util.Properties
 
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props, Terminated}
 import akka.pattern._
 import akka.routing._
-import com.josiahebhomenye.kafka.ConsumerActor._
 import com.josiahebhomenye.kafka.KafkaCoordinator._
 import com.typesafe.config.Config
 import net.ceedubs.ficus.Ficus._
-import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, OffsetAndMetadata}
+import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, ConsumerRecords, OffsetAndMetadata}
 import org.apache.kafka.common.TopicPartition
 
 import scala.collection.JavaConverters._
@@ -18,9 +16,10 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
-object ConsumerActor{
+object Consumers{
 
   case object Subscribe
+  case object Shutdown
   case object PollNext
   case object Commit
   case class CommitSuccess(offsets: Map[TopicPartition, OffsetAndMetadata])
@@ -34,17 +33,18 @@ object ConsumerActor{
   def groupProps(topics: Seq[String], parallelism: Int, handler: EventHandler[_], factory: Properties => Consumer[String, AnyRef], config: Config): Props = {
     Props(classOf[ConsumerGroup], topics, parallelism, handler, factory, config)
   }
+
 }
 
 class ConsumerGroup(topics: Seq[String],parallelism: Int, handler: EventHandler[_], factory: Properties => Consumer[String, AnyRef], config: Config) extends Actor with ActorLogging{
-  import ConsumerActor._
+  import Consumers._
   import context._
 
   private var shutdownRequestor = Option.empty[ActorRef]
   private var activeConsumers = parallelism
 
   val router: Router = {
-    Router(RoundRobinRoutingLogic(), Vector.fill(parallelism)(ActorRefRoutee(watch(actorOf(ConsumerActor.props(topics, handler, factory, config))))))
+    Router(RoundRobinRoutingLogic(), Vector.fill(parallelism)(ActorRefRoutee(watch(actorOf(Consumers.props(topics, handler, factory, config))))))
   }
 
   override def receive: Receive = {
@@ -61,8 +61,8 @@ class ConsumerGroup(topics: Seq[String],parallelism: Int, handler: EventHandler[
 
 class ConsumerActor(topics: Seq[String], handler: EventHandler[_], factory: Properties => Consumer[String, AnyRef], config: Config) extends Actor with ActorLogging{
 
-  import Kafka._
   import context._
+  import Consumers._
 
   private val props: Properties = {
     val generalProps  = config.as[Properties](s"app.kafka.consumer")
@@ -108,10 +108,15 @@ class ConsumerActor(topics: Seq[String], handler: EventHandler[_], factory: Prop
   }
 }
 
-trait Control{
+class Control(consumer: ActorRef){
+  import Consumers._
 
-  def start(): Future[Unit]
+  def start(): Future[Unit] = {
+    (consumer ? Subscribe).map(_ => ())
+  }
 
-  def stop(): Future[Unit]
+  def stop(): Future[Unit] = {
+    (consumer ? Shutdown).map(_ => ())
+  }
 }
 
