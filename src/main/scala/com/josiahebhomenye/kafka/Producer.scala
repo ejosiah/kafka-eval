@@ -3,10 +3,14 @@ package com.josiahebhomenye.kafka
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
+import scala.collection.JavaConverters._
 import com.typesafe.config.{Config, ConfigFactory}
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.serialization.{IntegerSerializer, StringSerializer}
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 
+import scala.annotation.tailrec
 import scala.language.implicitConversions
 
 object Producer{
@@ -28,24 +32,32 @@ object Producer{
 
   def run(): Unit = {
 
-    def send(messageNo: Int): Unit = {
-      val msg = s"Message_$messageNo"
-      val startTime = System.currentTimeMillis()
+    val doc = Jsoup.connect("https://livelifehappy.com/random-life-quotes/").get()
+    val elements: Seq[Element] = doc.select("p").iterator().asScala.toSeq.toList
 
-      def callback(metadata: RecordMetadata, exception: Exception): Unit = {
-        if(metadata != null){
-          val elapsedTime = System.currentTimeMillis() - startTime
-          println(s"$messageNo, $msg send to partition(${metadata.partition()}), offset(${metadata.offset()}) in $elapsedTime")
+    @tailrec
+    def send(messageNo: Int, elements: Seq[Element]): Unit = {
+      if (elements.isEmpty) return
+      if (elements.head.hasText) {
+        val elm = elements.head
+        val msg = elm.text()
+        val startTime = System.currentTimeMillis()
+
+        def callback(metadata: RecordMetadata, exception: Exception): Unit = {
+          if (metadata != null) {
+            val elapsedTime = System.currentTimeMillis() - startTime
+            println(s"$messageNo, $msg send to partition(${metadata.partition()}), offset(${metadata.offset()}) in $elapsedTime")
+          }
         }
+
+        producer.send(new ProducerRecord[Int, String](topic, messageNo, msg), callback)
+
       }
-
-      producer.send(new ProducerRecord[Int, String](topic, messageNo, msg), callback)
-
-  //    TimeUnit.SECONDS.sleep(10)
-      send(messageNo + 1)
+      send(messageNo + 1, elements.tail)
     }
 
-    send(1)
+    send(1, elements)
+    println("producer done")
   }
 }
 

@@ -11,9 +11,9 @@ lazy val root = (project in file(".")).
     name := "kafka-eval",
     libraryDependencies += "com.typesafe" % "config" % "1.3.3",
     libraryDependencies += "org.apache.kafka" %% "kafka" % "1.1.0",
+    libraryDependencies += "org.jsoup" % "jsoup" % "1.11.3",
+    libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.5.14",
+    libraryDependencies += "com.iheart" %% "ficus" % "1.4.3",
+    libraryDependencies += "com.typesafe.akka" %% "akka-testkit" % "2.5.14" % Test,
     libraryDependencies += scalaTest % Test
   )
-
-
-
-
